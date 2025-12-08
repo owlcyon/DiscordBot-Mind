@@ -1,1 +1,9 @@
- 
+ # Production Dependencies
+discord.py==2.3.2           # For the bot listener
+sqlalchemy==2.0.25          # For database ORM
+psycopg2-binary             # For connecting to PostgreSQL/Supabase
+sentence-transformers       # For generating embeddings
+numpy                       # Dependency for sentence-transformers
+pgvector                    # Python client for pgvector
+pydantic                    # For validation (MANDATE 5.4)
+python-dotenv               # For local testing
