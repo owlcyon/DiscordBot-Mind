@@ -35,7 +35,7 @@ intents.message_content = True # MANDATORY for accessing message content
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 
-# --- 4. Bot Event Handlers (Your Logic) ---
+# --- 4. Bot Event Handlers ---
 
 @bot.event
 async def on_ready():
@@ -71,7 +71,7 @@ async def on_message(message):
         # We don't send a public confirmation to avoid spam
 
     
-    # Removed the "hello bot" response since ingestion is now the primary action.
+    
 
 
 # --- 5. Execution ---
