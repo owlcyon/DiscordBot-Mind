@@ -40,7 +40,7 @@ class DiscordMessage(Base):
     # We anticipate using a popular model (like BAAI/bge-small-en-v1.5) 
     # which has 384 dimensions. This must match your chosen model's output size.
     # The Mapped[List[float]] provides Python type hinting for the vector array.
-    embedding: Mapped[List[float]] = mapped_column(Vector(384))
+    embedding: Mapped[List[float]] = mapped_column(Vector(1536))
     
     # Timestamps (MANDATE 4.1: Data Integrity)
     created_at: Mapped[datetime] = mapped_column(
