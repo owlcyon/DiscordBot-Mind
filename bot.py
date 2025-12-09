@@ -8,21 +8,15 @@ load_dotenv()
 # --- 2. Core Dependencies ---
 import discord
 from discord.ext import commands
-from sqlalchemy import text # Required for status command
+from sqlalchemy import text 
 
-# Import your database connection logic
+# Import database and service functions
 try:
     from app.core.database import get_db_session
-except ImportError:
-    print("CRITICAL: Cannot import database module. Check file structure.")
-    sys.exit(1)
-
-# Import the service functions
-try:
     from app.services.embedding_service import process_and_store_message
-    from app.services.retrieval_service import retrieve_and_answer # <-- NEW RAG IMPORT
+    from app.services.retrieval_service import retrieve_and_answer 
 except ImportError:
-    print("CRITICAL: Cannot import necessary service. Check app/services/ directory.")
+    print("CRITICAL: Cannot import necessary module. Check file structure and __init__.py files.")
     sys.exit(1)
 
 
@@ -32,7 +26,7 @@ if not DISCORD_TOKEN:
     print("CRITICAL: DISCORD_TOKEN not found in .env. Cannot proceed.")
     sys.exit(1)
 
-# Initialize Discord Client (using intents required for message content and guilds)
+# Initialize Discord Client with required intents
 intents = discord.Intents.default()
 intents.message_content = True # MANDATORY for accessing message content
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -47,38 +41,37 @@ async def on_ready():
     
 @bot.event
 async def on_message(message):
-    # Skip bot's own messages
+    # 1. Skip bot's own messages
     if message.author == bot.user:
         return
     
-    # --- 1. Handle Commands ---
-    await bot.process_commands(message)
+    # 2. Check if the message is a command. 
+    # This prevents ingestion for commands, but allows commands to run later.
+    is_command = message.content and message.content.startswith(bot.command_prefix)
 
-    # --- 2. Ingestion Logic (Embedding and Storage) ---
-    # Skip DMs, empty messages, or messages that are commands
-    if message.guild is None or not message.content or not message.content.strip() or message.content.startswith(bot.command_prefix):
-        return
-
-    # Use context manager properly for database session
-    try:
-        # Note: Using get_db_session() as a context manager is cleaner but requires adaptation.
-        # Sticking to next(get_db_session()) for consistency with your existing code structure.
-        db = next(get_db_session())
+    # --- 3. INGESTION LOGIC (Runs ONLY if it's NOT a command) ---
+    if not is_command and message.guild is not None and message.content and message.content.strip():
         try:
-            await process_and_store_message(
-                db=db,
-                discord_message_id=str(message.id),
-                author_id=str(message.author.id),
-                channel_id=str(message.channel.id),
-                content=message.content
-            )
-            print(f"✅ Ingested: {message.author.name} | Ch: {message.channel.name} | Len: {len(message.content)}")
+            # Sticking to next(get_db_session()) for consistency with your existing code structure.
+            db = next(get_db_session())
+            try:
+                await process_and_store_message(
+                    db=db,
+                    discord_message_id=str(message.id),
+                    author_id=str(message.author.id),
+                    channel_id=str(message.channel.id),
+                    content=message.content
+                )
+                print(f"✅ Ingested: {message.author.name} | Ch: {message.channel.name} | Len: {len(message.content)}")
+            except Exception as e:
+                print(f"❌ Ingestion failed for message {message.id}: {e}")
+            finally:
+                db.close()
         except Exception as e:
-            print(f"❌ Ingestion failed for message {message.id}: {e}")
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"❌ Database session error: {e}")
+            print(f"❌ Database session error: {e}")
+
+    # --- 4. Handle Commands (This should always be the last step) ---
+    await bot.process_commands(message)
 
 
 # --- 5. Basic Commands & RAG ---
@@ -91,35 +84,39 @@ async def ping(ctx):
 @bot.command(name='status')
 async def status(ctx):
     """Check bot status and message count"""
-    # Using the database session as a context manager for safety and cleanliness
+    db = None
     try:
-        with get_db_session() as db:
-            result = db.execute(text("SELECT COUNT(*) FROM discord_messages")).scalar()
-            await ctx.send(f'✅ Bot Online | Messages stored: {result}')
+        # ✅ FIX: Get the session from the generator
+        db = next(get_db_session()) 
+        result = db.execute(text("SELECT COUNT(*) FROM discord_messages")).scalar()
+        await ctx.send(f'✅ Bot Online | Messages stored: {result}')
     except Exception as e:
         await ctx.send(f'❌ Database error: {str(e)}')
+    finally:
+        # ✅ CRITICAL: Ensure the session is closed
+        if db:
+            db.close() 
 
-@bot.command(name='ask') # <-- NEW RAG COMMAND
+
+@bot.command(name='ask')
 async def ask_command(ctx, *, question):
-    """
-    Searches the knowledge base and generates an answer using RAG.
-    Usage: !ask What was the decision on deployment?
-    """
+    """Searches the knowledge base and generates an answer using RAG."""
     await ctx.send(f"🔍 Searching knowledge base for: `{question}`...")
     
+    db = None
     try:
-        # Use the database session as a context manager
-        with get_db_session() as session:
-            # Call the new RAG service
-            answer = retrieve_and_answer(question, session)
-            
-            # Send the final response
-            await ctx.send(f"🧠 **Answer:**\n{answer}")
+        # ✅ FIX: Get the session from the generator
+        db = next(get_db_session())
+        answer = retrieve_and_answer(question, db)
+        await ctx.send(f"🧠 **Answer:**\n{answer}")
             
     except Exception as e:
         print(f"Bot Command Error: {e}")
         await ctx.send("Sorry, I ran into an error while trying to answer that question.")
-
+    finally:
+        # ✅ CRITICAL: Ensure the session is closed
+        if db:
+            db.close()
 
 # --- 6. Execution ---
 

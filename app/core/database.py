@@ -5,9 +5,9 @@ from sqlalchemy.orm import sessionmaker
 # Get the connection URL from the environment variables
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Create the engine (using psycopg2 driver)
+# --- Create the Engine with the Fixed IPv4 Host ---
 engine = create_engine(
-    DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://")
+    DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://")  
 )
 
 # Create a configured "Session" class
