@@ -1,14 +1,13 @@
 import os
 import logging
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any
 
 # --- CORE DEPENDENCIES ---
-
 from openai import OpenAI 
 from openai import APIError
 from sqlalchemy.orm import Session 
 
-# Assuming  message model is defined here:
+# Import message model
 from app.models.message import DiscordMessage 
 
 # --- CONFIGURATION ---
@@ -32,12 +31,10 @@ class EmbeddingService:
         """
         try:
             self.client = OpenAI()
-            print(f"OpenAI Embedding client initialized with model: {EMBEDDING_MODEL}")
+            print(f"✅ OpenAI Embedding client initialized with model: {EMBEDDING_MODEL}")
         except Exception as e:
-            # Catch initialization failures (e.g., if the library is not installed)
             raise AppError(f"CRITICAL: Failed to initialize OpenAI client: {e}")
 
-    # MANDATE 4.1: Type Safety
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Converts a list of texts into a list of embedding vectors using the OpenAI API.
@@ -50,16 +47,18 @@ class EmbeddingService:
                 input=texts,
                 model=EMBEDDING_MODEL
             )
-            # Extract the vector list from each data object in the response
-            # The API call naturally handles the batching!
             return [data.embedding for data in response.data]
             
         except APIError as e:
-            # Catch specific API errors (e.g., bad key, rate limit)
-            raise AppError(f"OpenAI API Error during embedding.", 
-                           context={"texts_count": len(texts), "error": str(e), "status_code": e.status_code})
+            raise AppError(
+                f"OpenAI API Error during embedding.", 
+                context={
+                    "texts_count": len(texts), 
+                    "error": str(e), 
+                    "status_code": getattr(e, 'status_code', 'unknown')
+                }
+            )
         except Exception as e:
-            # Catch general runtime errors
             raise AppError(f"General Embedding failed.", context={"error": str(e)})
 
 # MANDATE 5.1: Dependency Injection Pattern
@@ -69,45 +68,61 @@ def get_embedding_service() -> EmbeddingService:
         get_embedding_service.instance = EmbeddingService()
     return get_embedding_service.instance
     
-# --- New Service Function for Ingestion (using the above class) ---
+# --- Service Function for Message Ingestion ---
 
 async def process_and_store_message(
     db: Session, 
-    content: str, 
-    user_id: int, 
-    guild_id: int
+    discord_message_id: str,
+    author_id: str,
+    channel_id: str,
+    content: str
 ):
     """
     Generates an embedding for a single message and saves it to the database.
-    """
-    embedding_service = get_embedding_service()
     
-    # 1. Generate the Vector Embedding (We pass a single item list for the batch function)
+    Args:
+        db: SQLAlchemy database session
+        discord_message_id: The unique Discord message ID
+        author_id: Discord user ID of the message author
+        channel_id: Discord channel ID where message was sent
+        content: The message text content
+    """
+    # Validate input
     if not content or not content.strip():
-        print("Skipping message due to empty content.")
+        print("⚠️  Skipping message due to empty content.")
         return
 
+    # Check for content length
+    if len(content) > 4000:
+        print(f"⚠️  Skipping message due to excessive length: {len(content)} characters")
+        return
+
+    embedding_service = get_embedding_service()
+
     try:
-        # We call embed_batch but only give it one text, expecting one embedding back
+        # 1. Generate the Vector Embedding
         embedding_vector = embedding_service.embed_batch([content])[0]
 
-    except AppError as e:
-        print(f"Ingestion failed for message: {e}")
-        return
+        # 2. Create the Database Record (matching your model fields)
+        new_message = DiscordMessage(
+            discord_id=discord_message_id,
+            author_id=author_id,
+            channel_id=channel_id,
+            content=content,
+            embedding=embedding_vector  # This matches your model's field name
+        )
 
-    # 2. Create the Database Record
-    new_message = DiscordMessage(
-        user_id=str(user_id),
-        guild_id=str(guild_id),
-        content=content,
-        vector=embedding_vector 
-    )
-
-    # 3. Commit to Database
-    try:
+        # 3. Commit to Database
         db.add(new_message)
         db.commit()
-        # No need for refresh here, just logging the success
+        print(f"✅ Message {discord_message_id} embedded and stored successfully")
+
+    except AppError as e:
+        print(f"❌ Embedding generation failed: {e}")
+        db.rollback()
+        raise
+
     except Exception as e:
         db.rollback()
-        print(f"Database error during message save: {e}")
+        print(f"❌ Database error during message save: {e}")
+        raise
