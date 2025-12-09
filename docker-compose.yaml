@@ -1,0 +1,20 @@
+# docker-compose.yml (Updated)
+services:
+  postgres:
+    # --- REPLACED IMAGE WITH BUILD INSTRUCTION ---
+    build:
+      context: .
+      dockerfile: db.Dockerfile # <--- Use the new builder file
+    # ---------------------------------------------
+    container_name: vector_db
+    environment:
+      POSTGRES_DB: discord_data
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
