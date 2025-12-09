@@ -14,7 +14,7 @@ engine = create_engine(
 # This class is used to create sessions for interacting with the database
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Dependency to get a DB session (used by your message handlers)
+# Dependency to get a DB session (used by message handlers)
 def get_db_session():
     """Provides a transactional scope around a series of operations."""
     db = SessionLocal()
