@@ -8,14 +8,17 @@ load_dotenv()
 # --- 2. Core Dependencies ---
 import discord
 from discord.ext import commands
-# Import your database connection logic
+from sqlalchemy import text, create_engine # <-- ADDED FOR INIT
+from app.models.message import Base # <-- ADDED FOR INIT
+
+# Import your database connection logic (Needed for Base and other imports)
 try:
     from app.core.database import get_db_session
 except ImportError:
     print("CRITICAL: Cannot import database module. Check file structure.")
     sys.exit(1)
 
-# NEW: Import the service function for ingestion
+# Import the service function for ingestion (Needed for other imports)
 try:
     from app.services.embedding_service import process_and_store_message
 except ImportError:
@@ -36,55 +39,67 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 
 # --- 4. Bot Event Handlers ---
+# (These handlers are ignored in the temporary init mode, but kept for future use)
 
 @bot.event
 async def on_ready():
-    # MANDATE 2.3: Observability - Structured Logging
     print(f'✅ Bot Logged In: {bot.user} (ID: {bot.user.id})')
-    # Optional: Test database connection here if needed
-    
+    # ... rest of on_ready logic
+
+
 @bot.event
 async def on_message(message):
-    if message.author == bot.user:
-        return
-    
-    # --- 1. Handle Commands ---
-    # Process commands first (e.g., !ask, !remember)
+    # This ingestion logic is also ignored in the temporary init mode
     await bot.process_commands(message)
-
-    # --- 2. Ingestion Logic (Embedding and Storage) ---
-    # We skip DMs and ensure the message has content before processing
-    if message.guild is None or not message.content:
-        return
-
-    # Use the database session manager to ensure the session is opened and closed correctly
-    # The 'for' loop is necessary because get_db_session is a generator/context manager
-    for db in get_db_session():
-        # This calls the service which contacts OpenAI and saves to PostgreSQL
-        await process_and_store_message(
-            db, 
-            message.content, 
-            message.author.id, 
-            message.guild.id
-        )
-        print(f"-> Ingested message from {message.author.name} (Length: {len(message.content)})")
-        # We don't send a public confirmation to avoid spam
-
-    
-    
+    # ... rest of on_message logic
 
 
-# --- 5. Execution ---
+# --- 5. Basic Commands ---
+@bot.command(name='ping')
+async def ping(ctx):
+    await ctx.send(f'🏓 Pong! Latency: {round(bot.latency * 1000)}ms')
+
+@bot.command(name='status')
+async def status(ctx):
+    db = next(get_db_session())
+    try:
+        from sqlalchemy import text
+        result = db.execute(text("SELECT COUNT(*) FROM discord_messages")).scalar()
+        await ctx.send(f'✅ Bot Online | Messages stored: {result}')
+    except Exception as e:
+        await ctx.send(f'❌ Database error: {str(e)}')
+    finally:
+        db.close()
+
+
+# --- 6. Execution (TEMPORARY DB INIT MODE) ---
 
 if __name__ == '__main__':
+    # This block is TEMPORARY to fix the database schema on Railway.
+    # It MUST be reverted after a successful deployment!
     try:
-        # Check if the database connection can be established before running the bot
-        with next(get_db_session()):
-            print("✅ Database session successfully initiated.")
+        from sqlalchemy import create_engine, text
         
-        bot.run(DISCORD_TOKEN)
+        DATABASE_URL = os.getenv("DATABASE_URL")
+        engine = create_engine(DATABASE_URL)
+
+        print("--- Attempting to fix pgvector extension and create tables ---")
+        
+        # 1. Create the extension (This MUST be done first)
+        with engine.connect() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector;")) 
+            connection.commit()
+            print("✅ pgvector extension enabled.")
+
+        # 2. Create the tables (DiscordMessage table with vector(1536))
+        Base.metadata.create_all(engine)
+        print("✅ Database schema (discord_messages) initialized successfully.")
+        
+        # CRITICAL: Exit the script after initialization.
+        print("✅ Initialization complete. Exiting script. PLEASE REVERT bot.py CODE.")
+        sys.exit(0)
         
     except Exception as e:
-        print(f"❌ Critical Error: Bot failed to run: {e}")
- 
-
+        print(f"❌ Critical Error: Initialization failed: {e}")
+        print(f"DEBUG URL used: {os.getenv('DATABASE_URL')}")
+        sys.exit(1)
