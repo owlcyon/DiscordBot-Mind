@@ -1,2 +1,34 @@
- # Ignore environment secrets
+# ----------------------------------------------------------------------
+# SECRETS AND ENVIRONMENT
+# ----------------------------------------------------------------------
 .env
+.flaskenv
+
+# ----------------------------------------------------------------------
+# PYTHON ARTIFACTS
+# ----------------------------------------------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Virtual environment folder (CodeSpaces uses this often)
+venv/
+.venv/
+
+# Python packaging/build files
+*.egg
+*.whl
+build/
+dist/
+
+# ----------------------------------------------------------------------
+# IDE & OS ARTIFACTS
+# ----------------------------------------------------------------------
+# VSCode settings (often local to your machine)
+.vscode/
+
+# macOS files
+.DS_Store
+
+# Logs
+*.log
