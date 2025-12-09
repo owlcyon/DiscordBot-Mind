@@ -15,6 +15,13 @@ except ImportError:
     print("CRITICAL: Cannot import database module. Check file structure.")
     sys.exit(1)
 
+# NEW: Import the service function for ingestion
+try:
+    from app.services.embedding_service import process_and_store_message
+except ImportError:
+    print("CRITICAL: Cannot import embedding service. Check app/services/embedding_service.py.")
+    sys.exit(1)
+
 
 # --- 3. Configuration ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -41,12 +48,30 @@ async def on_message(message):
     if message.author == bot.user:
         return
     
-    # This is where your Stage 2 (Embedding & Persistence) logic will go.
-    if "hello bot" in message.content.lower():
-        await message.channel.send(f"Hello, {message.author.display_name}! I am ready to ingest your consciousness data.")
-    
-    # Process other commands/events
+    # --- 1. Handle Commands ---
+    # Process commands first (e.g., !ask, !remember)
     await bot.process_commands(message)
+
+    # --- 2. Ingestion Logic (Embedding and Storage) ---
+    # We skip DMs and ensure the message has content before processing
+    if message.guild is None or not message.content:
+        return
+
+    # Use the database session manager to ensure the session is opened and closed correctly
+    # The 'for' loop is necessary because get_db_session is a generator/context manager
+    for db in get_db_session():
+        # This calls the service which contacts OpenAI and saves to PostgreSQL
+        await process_and_store_message(
+            db, 
+            message.content, 
+            message.author.id, 
+            message.guild.id
+        )
+        print(f"-> Ingested message from {message.author.name} (Length: {len(message.content)})")
+        # We don't send a public confirmation to avoid spam
+
+    
+    # Removed the "hello bot" response since ingestion is now the primary action.
 
 
 # --- 5. Execution ---
@@ -54,7 +79,6 @@ async def on_message(message):
 if __name__ == '__main__':
     try:
         # Check if the database connection can be established before running the bot
-        # This is a good sanity check
         with next(get_db_session()):
             print("✅ Database session successfully initiated.")
         
@@ -62,3 +86,5 @@ if __name__ == '__main__':
         
     except Exception as e:
         print(f"❌ Critical Error: Bot failed to run: {e}")
+ 
+
