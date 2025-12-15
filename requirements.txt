@@ -6,3 +6,4 @@ openai                      # generating embeddings
 pgvector                    # Python client for pgvector
 pydantic                    # validation (MANDATE 5.4)
 python-dotenv               # local testing
+scikit-learn                # semantic clustering (K-means, cosine similarity)

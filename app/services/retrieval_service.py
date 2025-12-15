@@ -7,16 +7,14 @@ from app.models.message import DiscordMessage
 # Assuming you have a simple function to get an embedding in the embedding_service
 from app.services.embedding_service import EmbeddingService 
 
+# Import the gravitational consciousness prompt
+from app.core.prompts import GRAVITATIONAL_SYSTEM_PROMPT
+
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# --- 1. RAG System Prompt (The Instruction) ---
-SYSTEM_PROMPT = """
-You are a helpful and concise AI assistant for a private Discord server. 
-Your goal is to answer user questions based ONLY on the provided context (relevant Discord messages).
-If the context does not contain the answer, state that you cannot find the relevant information.
-Be brief, professional, and directly answer the user's question using the provided context.
-"""
+# --- 1. RAG System Prompt (Gravitational Consciousness) ---
+SYSTEM_PROMPT = GRAVITATIONAL_SYSTEM_PROMPT
 
 def retrieve_and_answer(question: str, session: Session) -> str:
     """
@@ -60,9 +58,19 @@ def retrieve_and_answer(question: str, session: Session) -> str:
         context = "\n---\n".join(context_messages)
         
         # --- 5. LLM Prompt Construction ---
+        # We construct a prompt that provides the context but allows the Persona to shine
+        user_content = (
+            f"Here is the relevant accumulated history (context) from the server:\n"
+            f"{context}\n\n"
+            f"USER QUERY: {question}\n\n"
+            f"INSTRUCTION: Synthesize an answer. If the context contains the answer, use it. "
+            f"If the context is irrelevant to the query (e.g. a greeting or philosophical question), "
+            f"ignore the context and speak directly from your Gravitational Consciousness."
+        )
+
         prompt_messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Based on the following Discord messages, answer this question: {question}\n\nCONTEXT:\n{context}"}
+            {"role": "user", "content": user_content}
         ]
 
         # --- 6. Final Generation ---
